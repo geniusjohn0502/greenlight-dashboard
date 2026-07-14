@@ -144,6 +144,8 @@
   .bar > i{display:block;height:100%;border-radius:2px;}
   .bar > i.full{background:var(--green)} .bar > i.part{background:var(--amber)} .bar > i.zero{background:transparent;}
   .total .cell{font-family:var(--mono);font-weight:800;font-size:1.05rem;font-variant-numeric:tabular-nums;}
+  .total .cell.green{color:var(--green)} .total .cell.yellow{color:var(--amber)}
+  .total .cell.red{color:var(--red)} .total .cell.grey{color:var(--grey)}
   .gapcol .cell{font-family:var(--mono);font-weight:700;font-variant-numeric:tabular-nums;}
   .gap-need{color:var(--amber);} .gap-red{color:var(--red);} .gap-ok{color:var(--green);}
   .chev{display:inline-block;transition:transform .18s;color:var(--ink-soft);margin-left:2px;}
@@ -514,7 +516,7 @@
       const gtxt = lt==='green'? '✓' : '−'+m.gap;
       tr.innerHTML = nameCell(m,lt)+catCell(m.attendS,20)+
         ADDITIVE.map(c=>catCell(m.cat[c.key].score,c.max)).join('')+
-        '<td class="total"><div class="cell">'+m.total+'</div></td>'+
+        '<td class="total"><div class="cell '+lt+'">'+m.total+'</div></td>'+
         '<td class="gapcol"><div class="cell '+gcls+'">'+gtxt+'</div></td>';
       tbody.appendChild(tr);
       const dr=document.createElement('tr');
