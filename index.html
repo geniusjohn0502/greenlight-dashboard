@@ -264,7 +264,7 @@
         <b>計分規則</b>（近 6 個月滾動；總分＝六項相加）<br>
         <b>固定級距</b>　出席：0缺20 / 1缺15 / 2缺10 / 3缺↑0　·　培訓學分：≥6→15 / ≥4→10 / ≥2→5　·　引薦金額：≥200萬→15 / ≥80萬→10 / ≥40萬→5<br>
         <b>依「本期週數」換算（下列為平均值）</b>　引薦單(內+外, 每週)：≥1.5→20 / ≥1.2→15 / ≥1.0→10 / ≥0.75→5　·　一對一(每週)：≥2→15 / ≥1→10 / ≥0.5→5　·　來賓(每四週)：≥2→15 / ≥1→10<br>
-        <b>本期週數</b>　系統依 PALMS 出席資料自動推算（＝全分會最高出席場次，即資歷最完整夥伴經歷的例會數，已自動排除停會週）；如需修改可直接在上方欄位手動調整，點「回自動」還原。
+        <b>本期週數（自動）</b>　＝ PALMS 已累計場次（全分會最高出席場次）＋ 從資料日期到當月月底還會遇到幾次週三（開會日）。例：7/13 上傳＝已計 23 ＋ 月底前 3 次週三 = 26 週。分母以「月底目標」計算，避免月中平均被高估。基準日期取自檔名（如 <b>2026-07-13.xls</b>）；如需修改可在上方欄位手動調整，點「回自動」還原。
       </p>
     </footer>
   </div>
@@ -304,10 +304,26 @@
   // Total meetings a member has been through this rolling period = 出席+缺席+遲到+病假+替代
   // (PALMS 出席類別彼此互斥，每場例會恰落在其中一格，故相加＝該期例會總數)。
   function meetingsOf(m){ return (m.present||0)+(m.absent||0)+(m.late||0)+(m.med||0)+(m.sub||0); }
-  // 自動推算本期週數：取全分會出席場次最高者（資歷最完整的夥伴），即本期實際開了幾次會。
+  // base：PALMS 裡已累計的例會場次＝取全分會出席場次最高者（資歷最完整夥伴）。
   function computeAutoWeeks(members){
     let mx=0; for(const m of members){ const t=meetingsOf(m); if(t>mx) mx=t; }
     return mx>0 ? Math.round(mx) : null;
+  }
+  // 從檔名解析資料日期（YYYY-MM-DD / YYYYMMDD / YYYY.MM.DD 等），作為推算「月底前還有幾次週三」的基準日。
+  function parseDateFromName(name){
+    if(!name) return null;
+    const m=String(name).match(/(20\d{2})[-_.\/ ]?(0[1-9]|1[0-2])[-_.\/ ]?(0[1-9]|[12]\d|3[01])/);
+    if(m){ const d=new Date(+m[1], +m[2]-1, +m[3]); if(!isNaN(d.getTime())) return d; }
+    return null;
+  }
+  function lastDayOfMonth(d){ return new Date(d.getFullYear(), d.getMonth()+1, 0); }
+  // 從 refDate（不含當天）到當月最後一天，還會遇到幾次週三（開會日）。getDay(): 週三=3。
+  function remainingMeetings(refDate){
+    if(!refDate || isNaN(refDate.getTime())) return 0;
+    const end=lastDayOfMonth(refDate); let n=0;
+    const cur=new Date(refDate.getFullYear(), refDate.getMonth(), refDate.getDate()+1);
+    while(cur<=end){ if(cur.getDay()===3) n++; cur.setDate(cur.getDate()+1); }
+    return n;
   }
   function periodWeeks(){
     if(!weeksManual && AUTO_WEEKS) return AUTO_WEEKS;      // 自動偵測值優先
@@ -454,7 +470,10 @@
 
   // ---------- State & render ----------
   let MEMBERS=[];
-  let AUTO_WEEKS=null;      // 由 PALMS 出席資料自動推算的本期週數
+  let AUTO_WEEKS=null;      // 自動本期週數 = AUTO_BASE + AUTO_REMAIN
+  let AUTO_BASE=null;       // PALMS 已累計場次
+  let AUTO_REMAIN=0;        // 從資料日期到月底還有幾次週三
+  let AUTO_REF=null;        // 推算用的基準日期
   let weeksManual=false;    // 使用者是否手動覆寫週數
   let sortKey='total', sortDir=-1; // -1 desc
   const LS_KEY='bni_gld_v1';
@@ -661,11 +680,16 @@
   function showData(text, fileName, savedAt, opts){
     opts=opts||{};
     MEMBERS=parseAny(text);                    // 先解析（暫以預設週數計分）
-    AUTO_WEEKS=computeAutoWeeks(MEMBERS);       // 由出席資料自動推算本期週數
+    AUTO_BASE=computeAutoWeeks(MEMBERS);        // PALMS 已累計場次（如 7/13 = 23）
+    // 基準日期：檔名日期優先 → 上傳(commit)日期 → 存檔時間，用來推「月底前還有幾次週三」
+    AUTO_REF = parseDateFromName(fileName) || (opts.reportDate?new Date(opts.reportDate):null) || (savedAt?new Date(savedAt):new Date());
+    AUTO_REMAIN = (AUTO_BASE!=null) ? remainingMeetings(AUTO_REF) : 0;
+    AUTO_WEEKS = (AUTO_BASE!=null) ? AUTO_BASE + AUTO_REMAIN : null;   // 分母＝月底目標週數
     // 週數模式：僅在存檔/烤入資料明確標記為手動覆寫時，才沿用手動值；否則一律自動
     weeksManual = !!(opts.weeksManual && opts.periodWeeks);
     const el=$('#periodWeeks');
     if(el) el.value = weeksManual ? opts.periodWeeks : (AUTO_WEEKS || parseInt(el.value,10) || 26);
+    const wl=$('#weeks'); if(wl && AUTO_REMAIN>0) wl.value=AUTO_REMAIN;   // 月底前剩餘週數同步為「還有幾次週三」
     const w=periodWeeks();
     MEMBERS.forEach(m=>scoreMember(m,w));       // 以生效週數重新計分全員
     if(opts.newbies && opts.newbies.length){
@@ -689,9 +713,12 @@
       b.title='目前為手動指定週數，點此改回依 PALMS 出席資料自動推算'+(AUTO_WEEKS?('（自動值 '+AUTO_WEEKS+' 週）'):'');
     }else{
       b.textContent = AUTO_WEEKS? '自動' : '預設'; b.classList.remove('manual');
-      b.title = AUTO_WEEKS
-        ? ('依 PALMS 出席資料自動推算：本期 '+AUTO_WEEKS+' 週（取全分會最高出席場次＝資歷最完整夥伴經歷的例會數）')
-        : '無法從資料推算，暫用預設值，可手動調整';
+      if(AUTO_WEEKS){
+        const refTxt = (AUTO_REF && !isNaN(AUTO_REF.getTime())) ? (AUTO_REF.getMonth()+1)+'/'+AUTO_REF.getDate() : '資料日';
+        b.title = '自動推算本期 '+AUTO_WEEKS+' 週 ＝ PALMS 已累計 '+AUTO_BASE+' 週 ＋ 從 '+refTxt+' 到月底還有 '+AUTO_REMAIN+' 次週三';
+      } else {
+        b.title = '無法從資料推算，暫用預設值，可手動調整';
+      }
     }
   }
 
@@ -702,7 +729,10 @@
       try{ when=new Date(LAST.savedAt).toLocaleString('zh-TW',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}); }catch(e){}
     }
     const w=periodWeeks();
-    const wtag='本期 <b>'+w+'</b> 週'+(weeksManual?'（手動）':'（自動）');
+    let wtag='本期 <b>'+w+'</b> 週';
+    if(weeksManual) wtag+='（手動）';
+    else if(AUTO_WEEKS && AUTO_REMAIN>0) wtag+='（自動：已計 '+AUTO_BASE+' ＋ 月底前 '+AUTO_REMAIN+' 次週三）';
+    else wtag+='（自動）';
     let s;
     if(opts.github) s='線上最新 · <b>'+MEMBERS.length+'</b> 位夥伴 · '+wtag+(LAST&&LAST.fileName?' · '+esc(LAST.fileName):'');
     else if(opts.baked) s='共 <b>'+MEMBERS.length+'</b> 位夥伴 · '+wtag+(when?' · 更新 '+when:'');
@@ -755,11 +785,19 @@
     // 取「最新」：以檔名倒序（建議檔名含日期，如 2026-07-13…，會自動抓最新那份）
     files.sort((a,b)=> a.name<b.name?1:a.name>b.name?-1:0);
     const pick=files[0];
+    // 基準日期：檔名沒有日期時，退回抓該檔的 commit 日期（固定、不隨開頁時間變動）
+    let reportDate=null;
+    if(!parseDateFromName(pick.name)){
+      try{
+        const cRes=await fetch('https://api.github.com/repos/'+GH_DATA.owner+'/'+GH_DATA.repo+'/commits?path='+encodeURIComponent(GH_DATA.dir+'/'+pick.name)+'&sha='+GH_DATA.branch+'&per_page=1',{headers:{'Accept':'application/vnd.github+json'}});
+        if(cRes.ok){ const cs=await cRes.json(); if(Array.isArray(cs)&&cs[0]&&cs[0].commit) reportDate=cs[0].commit.committer.date; }
+      }catch(e){}
+    }
     const rawUrl=pick.download_url || ('https://raw.githubusercontent.com/'+GH_DATA.owner+'/'+GH_DATA.repo+'/'+GH_DATA.branch+'/'+GH_DATA.dir+'/'+encodeURIComponent(pick.name));
     const draw=await fetch(rawUrl);
     if(!draw.ok) return false;
     const text=await draw.text();
-    showData(text, pick.name, Date.now(), {github:true});
+    showData(text, pick.name, Date.now(), {github:true, reportDate:reportDate});
     return true;
   }
 
