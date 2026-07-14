@@ -7,10 +7,10 @@
 <title>大千分會 · 攻綠燈儀表板</title>
 <style>
   :root{
-    --paper:#FAF7F1; --surface:#FFFFFF; --surface-2:#F4EFE5; --surface-3:#EFE8DA;
+    --paper:#FAF6F1; --surface:#FFFFFF; --surface-2:#F5EEEA; --surface-3:#EFE6E1;
     --ink:#211E19; --ink-soft:#6B6459; --ink-faint:#9C948685;
-    --line:#E5DDCD; --line-soft:#EFEADF;
-    --accent:#A06B1F; --accent-ink:#8A5A16; --accent-soft:#F0E1C6;
+    --line:#E8DCD6; --line-soft:#F1EAE5;
+    --accent:#C8102E; --accent-ink:#A80E27; --accent-soft:#F8DFE2;
     --green:#1F9D57; --green-bg:#E4F4EA; --green-line:#BBE3C9;
     --amber:#C9880C; --amber-bg:#FAEECF; --amber-line:#EDD59A;
     --red:#CE3B39; --red-bg:#F8E2E0; --red-line:#EEC3C0;
@@ -24,7 +24,7 @@
       --paper:#151619; --surface:#1D1F25; --surface-2:#24262E; --surface-3:#2B2E38;
       --ink:#ECE7DD; --ink-soft:#9E978B; --ink-faint:#6b6559aa;
       --line:#2E313A; --line-soft:#282B33;
-      --accent:#D6A44E; --accent-ink:#E1B569; --accent-soft:#38301F;
+      --accent:#EC6A72; --accent-ink:#F3949A; --accent-soft:#3C1619;
       --green:#48C17C; --green-bg:#16301F; --green-line:#26543A;
       --amber:#E4B24A; --amber-bg:#332811; --amber-line:#584419;
       --red:#E5615C; --red-bg:#361D1C; --red-line:#5A2E2C;
@@ -33,10 +33,10 @@
     }
   }
   :root[data-theme="light"]{
-    --paper:#FAF7F1; --surface:#FFFFFF; --surface-2:#F4EFE5; --surface-3:#EFE8DA;
+    --paper:#FAF6F1; --surface:#FFFFFF; --surface-2:#F5EEEA; --surface-3:#EFE6E1;
     --ink:#211E19; --ink-soft:#6B6459; --ink-faint:#9C948685;
-    --line:#E5DDCD; --line-soft:#EFEADF;
-    --accent:#A06B1F; --accent-ink:#8A5A16; --accent-soft:#F0E1C6;
+    --line:#E8DCD6; --line-soft:#F1EAE5;
+    --accent:#C8102E; --accent-ink:#A80E27; --accent-soft:#F8DFE2;
     --green:#1F9D57; --green-bg:#E4F4EA; --green-line:#BBE3C9;
     --amber:#C9880C; --amber-bg:#FAEECF; --amber-line:#EDD59A;
     --red:#CE3B39; --red-bg:#F8E2E0; --red-line:#EEC3C0;
@@ -46,7 +46,7 @@
     --paper:#151619; --surface:#1D1F25; --surface-2:#24262E; --surface-3:#2B2E38;
     --ink:#ECE7DD; --ink-soft:#9E978B; --ink-faint:#6b6559aa;
     --line:#2E313A; --line-soft:#282B33;
-    --accent:#D6A44E; --accent-ink:#E1B569; --accent-soft:#38301F;
+    --accent:#EC6A72; --accent-ink:#F3949A; --accent-soft:#3C1619;
     --green:#48C17C; --green-bg:#16301F; --green-line:#26543A;
     --amber:#E4B24A; --amber-bg:#332811; --amber-line:#584419;
     --red:#E5615C; --red-bg:#361D1C; --red-line:#5A2E2C;
@@ -114,6 +114,7 @@
   .tile.y .stripe{background:var(--amber)} .tile.y .v{color:var(--amber)}
   .tile.r .stripe{background:var(--red)} .tile.r .v{color:var(--red)}
   .tile.a .stripe{background:var(--accent)} .tile.a .v{color:var(--accent-ink)}
+  .tile.gr .stripe{background:var(--grey)} .tile.gr .v{color:var(--grey)}
 
   /* Table */
   .tablecard{background:var(--surface);border:1px solid var(--line);border-radius:16px;
@@ -236,7 +237,6 @@
         <table>
           <thead>
             <tr id="headrow">
-              <th class="l" data-sort="light">燈號 <span class="ar"></span></th>
               <th class="l" data-sort="name">夥伴 <span class="ar"></span></th>
               <th data-sort="attend">出席 <span class="ar"></span></th>
               <th data-sort="ref">引薦單 <span class="ar"></span></th>
@@ -492,35 +492,35 @@
     const y=MEMBERS.filter(m=>lightOf(m)==='yellow').length;
     const r=MEMBERS.filter(m=>lightOf(m)==='red').length;
     const gr=MEMBERS.filter(m=>lightOf(m)==='grey').length;
-    const counted=MEMBERS.filter(m=>!m.newbie);
-    const rate=counted.length? Math.round(g/counted.length*100):0;
+    const counted=MEMBERS.filter(m=>!m.newbie).length;
+    const pct=n=> (counted? Math.round(n/counted*100):0)+'% ';
     tiles.innerHTML=
       tile('a','全員',MEMBERS.length,'位夥伴')+
-      tile('g','綠燈',g, rate+'% 綠燈率')+
-      tile('y','黃燈',y,'50–69 分')+
-      tile('r','紅燈',r,'低於 50 分')+
-      (gr? tile('','灰燈',gr,'新夥伴'):'');
+      tile('g','綠燈',g, pct(g)+'綠燈率')+
+      tile('y','黃燈',y, pct(y)+'黃燈率')+
+      tile('r','紅燈',r, pct(r)+'紅燈率')+
+      tile('gr','灰燈',gr,'新夥伴');
 
     // rows
     const q=clean($('#search').value);
     const list=MEMBERS.slice().filter(m=>!q||m.name.indexOf(q)>=0).sort(cmp);
     const weeks=Math.max(1, parseInt($('#weeks').value,10)||1);
     tbody.innerHTML='';
-    if(!list.length){ tbody.innerHTML='<tr><td colspan="10" class="empty">查無符合的夥伴</td></tr>'; syncHead(); return; }
+    if(!list.length){ tbody.innerHTML='<tr><td colspan="9" class="empty">查無符合的夥伴</td></tr>'; syncHead(); return; }
     for(const m of list){
       const lt=lightOf(m);
       const tr=document.createElement('tr');
       tr.className='mem'; tr.dataset.name=m.name;
       const gcls = lt==='green'?'gap-ok': (m.newbie?'':'gap-need');
       const gtxt = lt==='green'? '✓' : (m.newbie? '—' : '−'+m.gap);
-      tr.innerHTML = frontLight(lt)+nameCell(m,lt)+catCell(m.attendS,20)+
+      tr.innerHTML = nameCell(m,lt)+catCell(m.attendS,20)+
         ADDITIVE.map(c=>catCell(m.cat[c.key].score,c.max)).join('')+
         '<td class="total"><div class="cell">'+m.total+'</div></td>'+
         '<td class="gapcol"><div class="cell '+gcls+'">'+gtxt+'</div></td>';
       tbody.appendChild(tr);
       const dr=document.createElement('tr');
       dr.className='detail hidden';
-      dr.innerHTML='<td colspan="10">'+detailPanel(m,weeks)+'</td>';
+      dr.innerHTML='<td colspan="9">'+detailPanel(m,weeks)+'</td>';
       tbody.appendChild(dr);
       tr.addEventListener('click',()=>{
         const open=tr.classList.toggle('open');
@@ -530,7 +530,8 @@
     syncHead();
   }
   function frontLight(lt){ return '<td class="light"><div class="cell l"><span class="lamp '+lt+'"></span></div></td>'; }
-  function nameCell(m,lt){ return '<td class="name"><div class="cell l"><span>'+esc(m.name)+'</span><span class="chev">▸</span></div></td>'; }
+  function nameCell(m,lt){ return '<td class="name"><div class="cell l"><span class="lamp '+lt+'" title="'+lightLabel(lt)+'"></span><span>'+esc(m.name)+'</span><span class="chev">▸</span></div></td>'; }
+  function lightLabel(lt){ return lt==='green'?'綠燈':lt==='yellow'?'黃燈':lt==='red'?'紅燈':'灰燈（新夥伴）'; }
   function catCell(sc,max){
     const cls=catClass(sc,max); const pct=Math.round(sc/max*100);
     return '<td class="catcell"><div class="cell"><span class="catnum '+cls+'">'+sc+'</span>'+
