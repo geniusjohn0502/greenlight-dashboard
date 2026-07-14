@@ -257,8 +257,8 @@
       <div class="legend">
         <span><i style="background:var(--green)"></i>綠燈 ≥70</span>
         <span><i style="background:var(--amber)"></i>黃燈 50–69</span>
-        <span><i style="background:var(--red)"></i>紅燈 &lt;50</span>
-        <span><i style="background:var(--grey)"></i>灰燈（新夥伴，點列內可標記）</span>
+        <span><i style="background:var(--red)"></i>紅燈 30–49</span>
+        <span><i style="background:var(--grey)"></i>灰燈 &lt;30</span>
       </div>
       <p style="margin:10px 0 0">
         <b>計分規則</b>（近 6 個月滾動；總分＝六項相加）<br>
@@ -330,10 +330,10 @@
     const el=document.getElementById('periodWeeks'); const v=el?parseInt(el.value,10):26; return (v&&v>0)?v:26;
   }
   function lightOf(m){
-    if(m.newbie) return 'grey';
     if(m.total>=70) return 'green';
     if(m.total>=50) return 'yellow';
-    return 'red';
+    if(m.total>=30) return 'red';
+    return 'grey';   // 低於 30 分
   }
   const LIGHT_RANK={green:0,yellow:1,red:2,grey:3};
 
@@ -492,14 +492,14 @@
     const y=MEMBERS.filter(m=>lightOf(m)==='yellow').length;
     const r=MEMBERS.filter(m=>lightOf(m)==='red').length;
     const gr=MEMBERS.filter(m=>lightOf(m)==='grey').length;
-    const counted=MEMBERS.filter(m=>!m.newbie).length;
+    const counted=MEMBERS.length;
     const pct=n=> (counted? Math.round(n/counted*100):0)+'% ';
     tiles.innerHTML=
       tile('a','全員',MEMBERS.length,'位夥伴')+
       tile('g','綠燈',g, pct(g)+'綠燈率')+
       tile('y','黃燈',y, pct(y)+'黃燈率')+
       tile('r','紅燈',r, pct(r)+'紅燈率')+
-      tile('gr','灰燈',gr,'新夥伴');
+      tile('gr','灰燈',gr,'低於 30 分');
 
     // rows
     const q=clean($('#search').value);
@@ -511,8 +511,8 @@
       const lt=lightOf(m);
       const tr=document.createElement('tr');
       tr.className='mem'; tr.dataset.name=m.name;
-      const gcls = lt==='green'?'gap-ok': (m.newbie?'':'gap-need');
-      const gtxt = lt==='green'? '✓' : (m.newbie? '—' : '−'+m.gap);
+      const gcls = lt==='green'?'gap-ok':'gap-need';
+      const gtxt = lt==='green'? '✓' : '−'+m.gap;
       tr.innerHTML = nameCell(m,lt)+catCell(m.attendS,20)+
         ADDITIVE.map(c=>catCell(m.cat[c.key].score,c.max)).join('')+
         '<td class="total"><div class="cell">'+m.total+'</div></td>'+
@@ -531,7 +531,7 @@
   }
   function frontLight(lt){ return '<td class="light"><div class="cell l"><span class="lamp '+lt+'"></span></div></td>'; }
   function nameCell(m,lt){ return '<td class="name"><div class="cell l"><span class="lamp '+lt+'" title="'+lightLabel(lt)+'"></span><span>'+esc(m.name)+'</span><span class="chev">▸</span></div></td>'; }
-  function lightLabel(lt){ return lt==='green'?'綠燈':lt==='yellow'?'黃燈':lt==='red'?'紅燈':'灰燈（新夥伴）'; }
+  function lightLabel(lt){ return lt==='green'?'綠燈':lt==='yellow'?'黃燈':lt==='red'?'紅燈':'灰燈（低於 30 分）'; }
   function catCell(sc,max){
     const cls=catClass(sc,max); const pct=Math.round(sc/max*100);
     return '<td class="catcell"><div class="cell"><span class="catnum '+cls+'">'+sc+'</span>'+
@@ -548,10 +548,9 @@
     let html='<div class="panel">';
     html+='<div class="head"><div class="goal'+(done?' done':'')+'">'+
           (done? '✅ 已達綠燈　<span class="n">'+m.total+'</span> / 70'
-               : (m.newbie? '灰燈新夥伴（暫不列入紅黃綠）　目前 <span class="n">'+m.total+'</span> 分'
-                          : '距離綠燈還差 <span class="n">'+m.gap+'</span> 分（目前 '+m.total+' / 70）'))+
+               : '距離綠燈還差 <span class="n">'+m.gap+'</span> 分（目前 '+m.total+' / 70）')+
           '</div>';
-    if(!done && !m.newbie) html+='<div class="note">下方為各項可追分方式，任選達成 '+m.gap+' 分即上綠燈</div>';
+    if(!done) html+='<div class="note">下方為各項可追分方式，任選達成 '+m.gap+' 分即上綠燈</div>';
     html+='</div>';
 
     html+='<div class="ladder">';
@@ -594,9 +593,6 @@
       html+='</div>';
     }
     html+='</div>'; // ladder
-
-    html+='<div class="flag"><label><input type="checkbox" class="nb" '+(m.newbie?'checked':'')+
-          '> 標記為新夥伴（未滿 24 週，燈號轉灰、不列入紅黃綠統計）</label></div>';
     html+='</div>';
     return html;
   }
@@ -648,14 +644,6 @@
     $('#app').classList.add('hidden'); $('#dropzone').classList.remove('hidden');
     $('#filemeta').textContent='尚未載入資料'; setStatus('');
   });
-  tbody.addEventListener('change',e=>{
-    if(e.target.classList.contains('nb')){
-      const tr=e.target.closest('tr.detail').previousElementSibling;
-      const m=MEMBERS.find(x=>x.name===tr.dataset.name);
-      if(m){ m.newbie=e.target.checked; render(); persist(); }
-    }
-  });
-
   const dz=$('#dropzone'), fi=$('#fileinput');
   dz.addEventListener('click',()=>fi.click());
   dz.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); fi.click(); } });
