@@ -313,8 +313,13 @@
   // 從檔名解析資料日期（YYYY-MM-DD / YYYYMMDD / YYYY.MM.DD 等），作為推算「月底前還有幾次週三」的基準日。
   function parseDateFromName(name){
     if(!name) return null;
-    const m=String(name).match(/(20\d{2})[-_.\/ ]?(0[1-9]|1[0-2])[-_.\/ ]?(0[1-9]|[12]\d|3[01])/);
+    const s=String(name);
+    // YYYY-MM-DD（如 2026-07-13）
+    let m=s.match(/(20\d{2})[-_.\/ ]?(0[1-9]|1[0-2])[-_.\/ ]?(0[1-9]|[12]\d|3[01])/);
     if(m){ const d=new Date(+m[1], +m[2]-1, +m[3]); if(!isNaN(d.getTime())) return d; }
+    // DD-MM-YYYY（BNI 匯出預設檔名，如 13-07-2026）
+    m=s.match(/(^|[^\d])([0-3]?\d)[-_.\/ ](0?[1-9]|1[0-2])[-_.\/ ](20\d{2})([^\d]|$)/);
+    if(m){ const day=+m[2], mon=+m[3], d=new Date(+m[4], mon-1, day); if(day>=1&&day<=31&&!isNaN(d.getTime())) return d; }
     return null;
   }
   function lastDayOfMonth(d){ return new Date(d.getFullYear(), d.getMonth()+1, 0); }
