@@ -206,7 +206,7 @@
       </div>
     </div>
     <div class="meta">
-      綠燈門檻 <b>70 分</b>（滿分 100）<br>
+      綠燈門檻 <b>70 分</b><br>
       <span id="filemeta">尚未載入資料</span>
     </div>
   </header>
@@ -512,7 +512,7 @@
       const lt=lightOf(m);
       const tr=document.createElement('tr');
       tr.className='mem'; tr.dataset.name=m.name;
-      const gcls = lt==='green'?'gap-ok':'gap-need';
+      const gcls = lt==='green'?'gap-ok':'gap-red';
       const gtxt = lt==='green'? '✓' : '−'+m.gap;
       tr.innerHTML = nameCell(m,lt)+catCell(m.attendS,20)+
         ADDITIVE.map(c=>catCell(m.cat[c.key].score,c.max)).join('')+
