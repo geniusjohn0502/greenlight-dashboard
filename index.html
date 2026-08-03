@@ -101,6 +101,12 @@
   .btn{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:10px;
        padding:8px 14px;font-family:var(--cjk);font-size:.85rem;font-weight:600;cursor:pointer;transition:.15s;}
   .btn:hover{border-color:var(--accent);color:var(--accent-ink);}
+  /* 檢視模式切換：追分中（算到月底）／已結算（只算已開過的場次） */
+  .vmode{display:flex;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:3px;gap:3px;}
+  .vmode button{border:none;background:transparent;color:var(--ink-soft);border-radius:7px;cursor:pointer;
+       padding:5px 11px;font-family:var(--cjk);font-size:.8rem;font-weight:600;white-space:nowrap;transition:.15s;}
+  .vmode button:hover{color:var(--accent-ink);}
+  .vmode button.on{background:var(--accent);color:#fff;}
 
   /* Summary tiles */
   .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin-bottom:8px;}
@@ -225,8 +231,12 @@
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
         <input id="search" type="search" placeholder="搜尋夥伴姓名…" autocomplete="off">
       </div>
+      <div class="vmode" id="vmode" title="追分中＝分母算到本月底（看還要衝多少）；已結算＝分母只算已開過的例會（看上個月的最終成績）">
+        <button type="button" id="vmChase" data-mode="chase" class="on">追分中</button>
+        <button type="button" id="vmFinal" data-mode="final">已結算</button>
+      </div>
       <div class="weeks" title="本評分週期的週數（滾動 6 個月的例會次數），系統依 PALMS 出席資料自動推算，決定引薦單／一對一／來賓的級距">本期 <input id="periodWeeks" type="number" min="1" max="53" value="26"> 週<span id="weeksAuto" class="wauto">自動</span></div>
-      <div class="weeks" title="距月底剩餘週數，用於把追分數字換算成每週節奏">月底前剩 <input id="weeks" type="number" min="1" max="20" value="3"> 週</div>
+      <div class="weeks" id="weeksLeftBox" title="距月底剩餘週數，用於把追分數字換算成每週節奏">月底前剩 <input id="weeks" type="number" min="1" max="20" value="3"> 週</div>
       <button class="btn" id="reload">重新上傳</button>
       <button class="btn" id="clear">清除資料</button>
     </div>
@@ -265,7 +275,9 @@
         <b>計分規則</b>（近 6 個月滾動；總分＝六項相加）<br>
         <b>固定級距</b>　出席：0缺20 / 1缺15 / 2缺10 / 3缺↑0　·　培訓學分：≥6→15 / ≥4→10 / ≥2→5　·　引薦金額：≥200萬→15 / ≥80萬→10 / ≥40萬→5<br>
         <b>依「本期週數」換算（下列為平均值）</b>　引薦單(內+外, 每週)：≥1.5→20 / ≥1.2→15 / ≥1.0→10 / ≥0.75→5　·　一對一(每週)：≥2→15 / ≥1→10 / ≥0.5→5　·　來賓(每四週)：≥2→15 / ≥1→10<br>
-        <b>本期週數（自動）</b>　＝ PALMS 已累計場次（全分會最高出席場次）＋ 從資料日期到當月月底還會遇到幾次週三（開會日）。例：7/13 上傳＝已計 23 ＋ 月底前 3 次週三 = 26 週。分母以「月底目標」計算，避免月中平均被高估。基準日期取自檔名（如 <b>2026-07-13.xls</b>）；如需修改可在上方欄位手動調整，點「回自動」還原。
+        <b>兩種檢視模式</b>（上方切換）　<b>追分中</b>＝分母算到本月底，看「這個月要達標還差多少」；<b>已結算</b>＝分母只算已經開過的例會，看「到上次例會為止的最終成績」。同一份資料、只換分母。<br>
+        <b>新月份什麼時候開始</b>　資料日期要到<b>當月第一次例會（第一個週三）</b>當天或之後，本月才算開跑，這時才會出現「追分中」。若在那之前上傳（例如 8/3，而 8 月首次例會是 8/5），畫面就停在上個月的「已結算」，不會先做一個還沒開始的月份。<br>
+        <b>本期週數（自動）</b>　追分中＝ PALMS 已累計場次（全分會最高出席場次）＋ 從資料日期到當月月底還會遇到幾次週三（開會日）；已結算＝只取已累計場次。例：8/12 上傳＝已計 28 ＋ 月底前 2 次週三（8/19、8/26）= 30 週。分母以「月底目標」計算，避免月中平均被高估。基準日期取自檔名（<b>2026-08-03.xls</b> 或 BNI 原生的 <b>03-08-2026.xls</b> 都認得）；如需修改可在上方欄位手動調整，點「回自動」還原。
       </p>
     </footer>
   </div>
@@ -330,6 +342,25 @@
     const cur=new Date(refDate.getFullYear(), refDate.getMonth(), refDate.getDate()+1);
     while(cur<=end){ if(cur.getDay()===3) n++; cur.setDate(cur.getDate()+1); }
     return n;
+  }
+  // 當月第一次例會（該月第一個週三）
+  function firstMeetingOfMonth(d){
+    if(!d || isNaN(d.getTime())) return null;
+    const f=new Date(d.getFullYear(), d.getMonth(), 1);
+    while(f.getDay()!==3) f.setDate(f.getDate()+1);
+    return f;
+  }
+  // 最近一次已開過的例會日（refDate 當天或之前最近的週三），用於「已結算」的標籤
+  function lastMeetingOnOrBefore(refDate){
+    if(!refDate || isNaN(refDate.getTime())) return null;
+    const d=new Date(refDate.getFullYear(), refDate.getMonth(), refDate.getDate());
+    let guard=0;
+    while(d.getDay()!==3 && guard++<8) d.setDate(d.getDate()-1);
+    return d.getDay()===3 ? d : null;
+  }
+  // 依檢視模式重算自動週數：追分中＝已累計＋月底前剩餘；已結算＝只算已累計
+  function refreshAutoWeeks(){
+    AUTO_WEEKS = (AUTO_BASE!=null) ? (VIEW_MODE==='final' ? AUTO_BASE : AUTO_BASE + AUTO_REMAIN) : null;
   }
   function periodWeeks(){
     if(!weeksManual && AUTO_WEEKS) return AUTO_WEEKS;      // 自動偵測值優先
@@ -480,10 +511,14 @@
   let AUTO_BASE=null;       // PALMS 已累計場次
   let AUTO_REMAIN=0;        // 從資料日期到月底還有幾次週三
   let AUTO_REF=null;        // 推算用的基準日期
+  let VIEW_MODE='chase';    // 'chase'＝追分中（分母算到月底）／'final'＝已結算（分母只算已開過的場次）
+  let FIRST_MEETING=null;   // 資料日期所在月份的第一次例會（第一個週三）
+  let MONTH_STARTED=true;   // 資料日期是否已到當月第一次例會；未到則本月尚未開跑，只給「已結算」
   let weeksManual=false;    // 使用者是否手動覆寫週數
   let sortKey='total', sortDir=-1; // -1 desc
   const LS_KEY='bni_gld_v1';
   let LAST=null; // {raw, fileName, savedAt}
+  let LAST_OPTS={}; // 最後一次 showData 的來源選項（github / baked / restored），切換檢視模式時沿用
   const $=s=>document.querySelector(s);
   const tbody=$('#tbody'), tiles=$('#tiles');
 
@@ -643,6 +678,8 @@
     updateWeeksBadge();
     const w=periodWeeks(); MEMBERS.forEach(m=>scoreMember(m,w)); render(); persist();
   });
+  $('#vmChase').addEventListener('click',()=>setViewMode('chase'));
+  $('#vmFinal').addEventListener('click',()=>setViewMode('final'));
   $('#reload').addEventListener('click',()=>{ $('#app').classList.add('hidden'); $('#dropzone').classList.remove('hidden'); setStatus(''); });
   $('#clear').addEventListener('click',()=>{
     try{ localStorage.removeItem(LS_KEY); }catch(e){}
@@ -667,6 +704,7 @@
         raw:LAST.raw, fileName:LAST.fileName, savedAt:LAST.savedAt,
         periodWeeks: periodWeeks(),
         weeksManual: weeksManual,
+        viewMode: VIEW_MODE,
         newbies: MEMBERS.filter(m=>m.newbie).map(m=>m.name)
       }));
     }catch(e){/* storage unavailable (private mode / sandbox) — degrade quietly */}
@@ -678,13 +716,21 @@
     AUTO_BASE=computeAutoWeeks(MEMBERS);        // PALMS 已累計場次（如 7/13 = 23）
     // 基準日期：檔名日期優先 → 上傳(commit)日期 → 存檔時間，用來推「月底前還有幾次週三」
     AUTO_REF = parseDateFromName(fileName) || (opts.reportDate?new Date(opts.reportDate):null) || (savedAt?new Date(savedAt):new Date());
+    if(AUTO_REF && !isNaN(AUTO_REF.getTime())) AUTO_REF=new Date(AUTO_REF.getFullYear(), AUTO_REF.getMonth(), AUTO_REF.getDate()); // 去掉時分秒，方便跟例會日比大小
     AUTO_REMAIN = (AUTO_BASE!=null) ? remainingMeetings(AUTO_REF) : 0;
-    AUTO_WEEKS = (AUTO_BASE!=null) ? AUTO_BASE + AUTO_REMAIN : null;   // 分母＝月底目標週數
+    // 本月是否已開跑：資料日期要到當月第一次例會（第一個週三）當天或之後，才算新月份開始。
+    // 例：8/3 上傳、8 月首次例會是 8/5 → 8 月還沒開跑，這時只呈現上個月的「已結算」，不做 8 月的追分頁面。
+    FIRST_MEETING = firstMeetingOfMonth(AUTO_REF);
+    MONTH_STARTED = !(AUTO_REF && FIRST_MEETING) || AUTO_REF.getTime() >= FIRST_MEETING.getTime();
+    // 檢視模式：本月未開跑一律鎖在「已結算」；否則沿用存檔值，預設「追分中」
+    VIEW_MODE = !MONTH_STARTED ? 'final' : ((opts.viewMode==='final') ? 'final' : 'chase');
+    refreshAutoWeeks();                                   // 分母＝月底目標週數（追分中）或已累計場次（已結算）
     // 週數模式：僅在存檔/烤入資料明確標記為手動覆寫時，才沿用手動值；否則一律自動
     weeksManual = !!(opts.weeksManual && opts.periodWeeks);
     const el=$('#periodWeeks');
     if(el) el.value = weeksManual ? opts.periodWeeks : (AUTO_WEEKS || parseInt(el.value,10) || 26);
-    const wl=$('#weeks'); if(wl && AUTO_REMAIN>0) wl.value=AUTO_REMAIN;   // 月底前剩餘週數同步為「還有幾次週三」
+    syncWeeksLeft();                                      // 月底前剩餘週數同步為「還有幾次週三」
+    updateViewModeUI();
     const w=periodWeeks();
     MEMBERS.forEach(m=>scoreMember(m,w));       // 以生效週數重新計分全員
     if(opts.newbies && opts.newbies.length){
@@ -698,7 +744,46 @@
     sortKey='total'; sortDir=-1;
     updateWeeksBadge();
     render();
+    LAST_OPTS=opts;                             // 供切換檢視模式時重繪頂端說明列
     updateMeta(opts);
+  }
+
+  // 「月底前剩 N 週」：追分中才有意義；已結算模式下沒有剩餘場次，整格隱藏
+  function syncWeeksLeft(){
+    const box=$('#weeksLeftBox'), wl=$('#weeks'); if(!box||!wl) return;
+    if(VIEW_MODE==='final'){ box.classList.add('hidden'); return; }
+    box.classList.remove('hidden');
+    if(AUTO_REMAIN>0) wl.value=AUTO_REMAIN;
+  }
+  // 兩顆按鈕的選取狀態與文字（文字帶出各自對應的日期，避免使用者要自己推算）
+  function updateViewModeUI(){
+    const bc=$('#vmChase'), bf=$('#vmFinal'), box=$('#vmode'); if(!bc||!bf||!box) return;
+    // 本月尚未開跑 → 沒有「追分中」可看，整組切換收起來，避免呈現一個還不存在的月份
+    box.classList.toggle('hidden', !MONTH_STARTED);
+    if(!MONTH_STARTED) return;
+    bc.classList.toggle('on', VIEW_MODE!=='final');
+    bf.classList.toggle('on', VIEW_MODE==='final');
+    if(AUTO_REF && !isNaN(AUTO_REF.getTime())){
+      bc.textContent='追分中 · '+(AUTO_REF.getMonth()+1)+'月底';
+      const lm=lastMeetingOnOrBefore(AUTO_REF);
+      bf.textContent='已結算 · 至 '+(lm?((lm.getMonth()+1)+'/'+lm.getDate()):'上次例會');
+    }
+    const cw=(AUTO_BASE!=null)?(AUTO_BASE+AUTO_REMAIN):null, fw=AUTO_BASE;
+    bc.title='追分中：分母算到本月底（'+(cw||'—')+' 週＝已累計 '+(AUTO_BASE||'—')+' ＋ 月底前 '+AUTO_REMAIN+' 次例會），看的是「要達標還差多少」';
+    bf.title='已結算：分母只算已經開過的例會（'+(fw||'—')+' 週），看的是「到上次例會為止的最終成績」';
+  }
+  function setViewMode(mode){
+    const next=(mode==='final')?'final':'chase';
+    if(next==='chase' && !MONTH_STARTED) return;   // 本月首次例會還沒到，不開放追分模式
+    if(next===VIEW_MODE) return;
+    VIEW_MODE=next;
+    refreshAutoWeeks();
+    if(!weeksManual && AUTO_WEEKS){ const el=$('#periodWeeks'); if(el) el.value=AUTO_WEEKS; }
+    syncWeeksLeft();
+    updateViewModeUI();
+    const w=periodWeeks();
+    MEMBERS.forEach(m=>scoreMember(m,w));
+    updateWeeksBadge(); render(); updateMeta(LAST_OPTS); persist();
   }
 
   function updateWeeksBadge(){
@@ -710,7 +795,9 @@
       b.textContent = AUTO_WEEKS? '自動' : '預設'; b.classList.remove('manual');
       if(AUTO_WEEKS){
         const refTxt = (AUTO_REF && !isNaN(AUTO_REF.getTime())) ? (AUTO_REF.getMonth()+1)+'/'+AUTO_REF.getDate() : '資料日';
-        b.title = '自動推算本期 '+AUTO_WEEKS+' 週 ＝ PALMS 已累計 '+AUTO_BASE+' 週 ＋ 從 '+refTxt+' 到月底還有 '+AUTO_REMAIN+' 次週三';
+        b.title = (VIEW_MODE==='final')
+          ? '已結算模式：本期 '+AUTO_WEEKS+' 週 ＝ PALMS 已累計場次，不含尚未開的例會'
+          : '自動推算本期 '+AUTO_WEEKS+' 週 ＝ PALMS 已累計 '+AUTO_BASE+' 週 ＋ 從 '+refTxt+' 到月底還有 '+AUTO_REMAIN+' 次週三';
       } else {
         b.title = '無法從資料推算，暫用預設值，可手動調整';
       }
@@ -726,7 +813,15 @@
     const w=periodWeeks();
     let wtag='本期 <b>'+w+'</b> 週';
     if(weeksManual) wtag+='（手動）';
-    else if(AUTO_WEEKS && AUTO_REMAIN>0) wtag+='（自動：已計 '+AUTO_BASE+' ＋ 月底前 '+AUTO_REMAIN+' 次週三）';
+    else if(VIEW_MODE==='final'){
+      const lm=lastMeetingOnOrBefore(AUTO_REF);
+      const lmTxt=lm?((lm.getMonth()+1)+'/'+lm.getDate()):'上次例會';
+      wtag+='（'+(lm?(lm.getMonth()+1)+' 月':'')+'已結算：至 '+lmTxt+'）';
+      if(!MONTH_STARTED && FIRST_MEETING){
+        wtag+=' · <b>'+(FIRST_MEETING.getMonth()+1)+' 月首次例會 '+(FIRST_MEETING.getMonth()+1)+'/'+FIRST_MEETING.getDate()+'，尚未開跑</b>';
+      }
+    }
+    else if(AUTO_WEEKS && AUTO_REMAIN>0) wtag+='（追分中：已計 '+AUTO_BASE+' ＋ 月底前 '+AUTO_REMAIN+' 次週三）';
     else wtag+='（自動）';
     let s;
     if(opts.github) s='線上最新 · <b>'+MEMBERS.length+'</b> 位夥伴 · '+wtag+(LAST&&LAST.fileName?' · '+esc(LAST.fileName):'');
@@ -757,7 +852,7 @@
     let s=null;
     try{ s=JSON.parse(localStorage.getItem(LS_KEY)||'null'); }catch(e){ s=null; }
     if(s && s.raw){
-      try{ showData(s.raw, s.fileName, s.savedAt, {periodWeeks:s.periodWeeks, weeksManual:s.weeksManual, newbies:s.newbies, restored:true}); }
+      try{ showData(s.raw, s.fileName, s.savedAt, {periodWeeks:s.periodWeeks, weeksManual:s.weeksManual, viewMode:s.viewMode, newbies:s.newbies, restored:true}); }
       catch(e){ /* corrupt / format changed — start fresh */ }
     }
   }
@@ -777,8 +872,15 @@
     if(!Array.isArray(items)) return false;
     const files=items.filter(it=>it.type==='file' && /\.(xls|xml|csv|txt)$/i.test(it.name));
     if(!files.length) return false;
-    // 取「最新」：以檔名倒序（建議檔名含日期，如 2026-07-13…，會自動抓最新那份）
-    files.sort((a,b)=> a.name<b.name?1:a.name>b.name?-1:0);
+    // 取「最新」：優先比對檔名解析出的日期。
+    // （不可用檔名字串排序：BNI 原生檔名是 DD-MM-YYYY，字串比大小時 03-08-2026 會排在 25-07-2026 之後，跨月就會抓到舊檔）
+    files.sort((a,b)=>{
+      const da=parseDateFromName(a.name), db=parseDateFromName(b.name);
+      if(da&&db) return db.getTime()-da.getTime();      // 都有日期 → 新的在前
+      if(da) return -1;                                  // 有日期的優先於解析不出日期的
+      if(db) return 1;
+      return a.name<b.name?1:a.name>b.name?-1:0;         // 都沒日期 → 退回檔名倒序
+    });
     const pick=files[0];
     // 基準日期：檔名沒有日期時，退回抓該檔的 commit 日期（固定、不隨開頁時間變動）
     let reportDate=null;
@@ -802,7 +904,7 @@
     // 2) 烤入頁面的資料（若有）
     const baked=getBaked();
     if(baked){
-      try{ showData(baked.raw, baked.fileName, baked.savedAt, {periodWeeks:baked.periodWeeks, weeksManual:baked.weeksManual, newbies:baked.newbies, baked:true}); return; }
+      try{ showData(baked.raw, baked.fileName, baked.savedAt, {periodWeeks:baked.periodWeeks, weeksManual:baked.weeksManual, viewMode:baked.viewMode, newbies:baked.newbies, baked:true}); return; }
       catch(e){ /* fall through to local */ }
     }
     // 3) 這台瀏覽器上次手動上傳的資料
