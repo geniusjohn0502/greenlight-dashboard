@@ -519,6 +519,11 @@
   const LS_KEY='bni_gld_v1';
   let LAST=null; // {raw, fileName, savedAt}
   let LAST_OPTS={}; // 最後一次 showData 的來源選項（github / baked / restored），切換檢視模式時沿用
+  // ---- 雙來源：追分中讀「當月最新檔」；已結算讀「上月定案檔」（日期早於當月第一次例會的最新一份）----
+  // 只有 GitHub 多檔載入時才會有 SETTLED_*；單檔（本機上傳）時 SETTLED_* 皆為 null，已結算退回舊行為（同一份、只換分母）。
+  let CUR_MEMBERS=null, CUR_REF=null, CUR_BASE=null, CUR_REMAIN=0;   // 當月最新檔的解析結果
+  let SETTLED_MEMBERS=null, SETTLED_REF=null, SETTLED_BASE=null;      // 上月定案檔的解析結果（無則 null）
+  let CUR_FILE='', SETTLED_FILE='', ACTIVE_FILE='';                   // 各來源檔名 + 當下實際顯示的檔名（狀態列用）
   const $=s=>document.querySelector(s);
   const tbody=$('#tbody'), tiles=$('#tiles');
 
@@ -710,21 +715,43 @@
     }catch(e){/* storage unavailable (private mode / sandbox) — degrade quietly */}
   }
 
+  // 解析一份 PALMS 檔的基本情境：成員、基準日（去時分秒）、已累計場次
+  function parseCtx(text, fileName, fallbackDate){
+    const members=parseAny(text);
+    let ref = parseDateFromName(fileName) || (fallbackDate?new Date(fallbackDate):null) || new Date();
+    if(ref && !isNaN(ref.getTime())) ref=new Date(ref.getFullYear(), ref.getMonth(), ref.getDate());
+    return {members, ref, base:computeAutoWeeks(members)};
+  }
+  // 依 VIEW_MODE 把「作用中」的全域資料切到 追分中（CUR）或 已結算（SETTLED，無則退回 CUR 只換分母）
+  function applyActiveView(){
+    if(VIEW_MODE==='final' && SETTLED_MEMBERS){       // 已結算＝上月定案檔（凍結）
+      MEMBERS=SETTLED_MEMBERS; AUTO_REF=SETTLED_REF; AUTO_BASE=SETTLED_BASE; AUTO_REMAIN=0; ACTIVE_FILE=SETTLED_FILE;
+    }else if(VIEW_MODE==='final'){                     // 沒有上月定案檔 → 舊行為：同一份、只算已累計
+      MEMBERS=CUR_MEMBERS; AUTO_REF=CUR_REF; AUTO_BASE=CUR_BASE; AUTO_REMAIN=0; ACTIVE_FILE=CUR_FILE;
+    }else{                                             // 追分中＝當月最新檔，分母算到月底
+      MEMBERS=CUR_MEMBERS; AUTO_REF=CUR_REF; AUTO_BASE=CUR_BASE; AUTO_REMAIN=CUR_REMAIN; ACTIVE_FILE=CUR_FILE;
+    }
+    refreshAutoWeeks();
+  }
+
   function showData(text, fileName, savedAt, opts){
     opts=opts||{};
-    MEMBERS=parseAny(text);                    // 先解析（暫以預設週數計分）
-    AUTO_BASE=computeAutoWeeks(MEMBERS);        // PALMS 已累計場次（如 7/13 = 23）
-    // 基準日期：檔名日期優先 → 上傳(commit)日期 → 存檔時間，用來推「月底前還有幾次週三」
-    AUTO_REF = parseDateFromName(fileName) || (opts.reportDate?new Date(opts.reportDate):null) || (savedAt?new Date(savedAt):new Date());
-    if(AUTO_REF && !isNaN(AUTO_REF.getTime())) AUTO_REF=new Date(AUTO_REF.getFullYear(), AUTO_REF.getMonth(), AUTO_REF.getDate()); // 去掉時分秒，方便跟例會日比大小
-    AUTO_REMAIN = (AUTO_BASE!=null) ? remainingMeetings(AUTO_REF) : 0;
-    // 本月是否已開跑：資料日期要到當月第一次例會（第一個週三）當天或之後，才算新月份開始。
-    // 例：8/3 上傳、8 月首次例會是 8/5 → 8 月還沒開跑，這時只呈現上個月的「已結算」，不做 8 月的追分頁面。
-    FIRST_MEETING = firstMeetingOfMonth(AUTO_REF);
-    MONTH_STARTED = !(AUTO_REF && FIRST_MEETING) || AUTO_REF.getTime() >= FIRST_MEETING.getTime();
+    // 當月最新檔（追分中用）
+    const cur=parseCtx(text, fileName, opts.reportDate || savedAt);
+    CUR_MEMBERS=cur.members; CUR_REF=cur.ref; CUR_BASE=cur.base; CUR_FILE=fileName||'';
+    CUR_REMAIN=(CUR_BASE!=null)?remainingMeetings(CUR_REF):0;
+    // 上月定案檔（已結算用，僅 GitHub 多檔載入時提供；無則已結算退回舊行為）
+    if(opts.settled && opts.settled.text){
+      const st=parseCtx(opts.settled.text, opts.settled.fileName, opts.settled.reportDate);
+      SETTLED_MEMBERS=st.members; SETTLED_REF=st.ref; SETTLED_BASE=st.base; SETTLED_FILE=opts.settled.fileName||'';
+    }else{ SETTLED_MEMBERS=null; SETTLED_REF=null; SETTLED_BASE=null; SETTLED_FILE=''; }
+    // 本月是否已開跑（用當月最新檔判斷）：資料日期要到當月第一次例會（第一個週三）當天或之後。
+    // 例：8/3 上傳、8 月首次例會是 8/5 → 8 月還沒開跑，只呈現上個月的「已結算」。
+    FIRST_MEETING = firstMeetingOfMonth(CUR_REF);
+    MONTH_STARTED = !(CUR_REF && FIRST_MEETING) || CUR_REF.getTime() >= FIRST_MEETING.getTime();
     // 檢視模式：本月未開跑一律鎖在「已結算」；否則沿用存檔值，預設「追分中」
     VIEW_MODE = !MONTH_STARTED ? 'final' : ((opts.viewMode==='final') ? 'final' : 'chase');
-    refreshAutoWeeks();                                   // 分母＝月底目標週數（追分中）或已累計場次（已結算）
+    applyActiveView();                                   // 依模式把作用中資料切到 CUR 或 SETTLED
     // 週數模式：僅在存檔/烤入資料明確標記為手動覆寫時，才沿用手動值；否則一律自動
     weeksManual = !!(opts.weeksManual && opts.periodWeeks);
     const el=$('#periodWeeks');
@@ -763,21 +790,27 @@
     if(!MONTH_STARTED) return;
     bc.classList.toggle('on', VIEW_MODE!=='final');
     bf.classList.toggle('on', VIEW_MODE==='final');
-    if(AUTO_REF && !isNaN(AUTO_REF.getTime())){
-      bc.textContent='追分中 · '+(AUTO_REF.getMonth()+1)+'月底';
-      const lm=lastMeetingOnOrBefore(AUTO_REF);
+    // 按鈕文字用「各自固定的來源」標示，不隨當下作用中模式改變：
+    // 追分中 → 當月最新檔（CUR）；已結算 → 上月定案檔（SETTLED，無則退回 CUR）
+    const finalRef = SETTLED_REF || CUR_REF;
+    const finalBase = (SETTLED_BASE!=null) ? SETTLED_BASE : CUR_BASE;
+    if(CUR_REF && !isNaN(CUR_REF.getTime())){
+      bc.textContent='追分中 · '+(CUR_REF.getMonth()+1)+'月底';
+    }
+    if(finalRef && !isNaN(finalRef.getTime())){
+      const lm=lastMeetingOnOrBefore(finalRef);
       bf.textContent='已結算 · 至 '+(lm?((lm.getMonth()+1)+'/'+lm.getDate()):'上次例會');
     }
-    const cw=(AUTO_BASE!=null)?(AUTO_BASE+AUTO_REMAIN):null, fw=AUTO_BASE;
-    bc.title='追分中：分母算到本月底（'+(cw||'—')+' 週＝已累計 '+(AUTO_BASE||'—')+' ＋ 月底前 '+AUTO_REMAIN+' 次例會），看的是「要達標還差多少」';
-    bf.title='已結算：分母只算已經開過的例會（'+(fw||'—')+' 週），看的是「到上次例會為止的最終成績」';
+    const cw=(CUR_BASE!=null)?(CUR_BASE+CUR_REMAIN):null, fw=finalBase;
+    bc.title='追分中：分母算到本月底（'+(cw||'—')+' 週＝已累計 '+(CUR_BASE||'—')+' ＋ 月底前 '+CUR_REMAIN+' 次例會），看的是「要達標還差多少」';
+    bf.title='已結算：分母只算已開過的例會（'+(fw||'—')+' 週）'+(SETTLED_MEMBERS?'，讀上月定案檔、凍結不再變動':'')+'，看的是「上個月的最終成績」';
   }
   function setViewMode(mode){
     const next=(mode==='final')?'final':'chase';
     if(next==='chase' && !MONTH_STARTED) return;   // 本月首次例會還沒到，不開放追分模式
     if(next===VIEW_MODE) return;
     VIEW_MODE=next;
-    refreshAutoWeeks();
+    applyActiveView();                             // 切換 CUR（追分中）／SETTLED（已結算）資料與分母
     if(!weeksManual && AUTO_WEEKS){ const el=$('#periodWeeks'); if(el) el.value=AUTO_WEEKS; }
     syncWeeksLeft();
     updateViewModeUI();
@@ -823,11 +856,12 @@
     }
     else if(AUTO_WEEKS && AUTO_REMAIN>0) wtag+='（追分中：已計 '+AUTO_BASE+' ＋ 月底前 '+AUTO_REMAIN+' 次週三）';
     else wtag+='（自動）';
+    const fn = ACTIVE_FILE || (LAST&&LAST.fileName) || '';   // 已結算模式顯示實際讀的定案檔名，而非當月最新檔
     let s;
-    if(opts.github) s='線上最新 · <b>'+MEMBERS.length+'</b> 位夥伴 · '+wtag+(LAST&&LAST.fileName?' · '+esc(LAST.fileName):'');
+    if(opts.github) s='線上最新 · <b>'+MEMBERS.length+'</b> 位夥伴 · '+wtag+(fn?' · '+esc(fn):'');
     else if(opts.baked) s='共 <b>'+MEMBERS.length+'</b> 位夥伴 · '+wtag+(when?' · 更新 '+when:'');
-    else if(opts.restored) s='沿用上次資料 <b>'+MEMBERS.length+'</b> 位 · '+wtag+(LAST&&LAST.fileName?' · '+esc(LAST.fileName):'')+(when?' · '+when:'');
-    else s='已載入 <b>'+MEMBERS.length+'</b> 位夥伴 · '+wtag+(LAST&&LAST.fileName?' · '+esc(LAST.fileName):'');
+    else if(opts.restored) s='沿用上次資料 <b>'+MEMBERS.length+'</b> 位 · '+wtag+(fn?' · '+esc(fn):'')+(when?' · '+when:'');
+    else s='已載入 <b>'+MEMBERS.length+'</b> 位夥伴 · '+wtag+(fn?' · '+esc(fn):'');
     $('#filemeta').innerHTML=s;
   }
 
@@ -890,11 +924,28 @@
         if(cRes.ok){ const cs=await cRes.json(); if(Array.isArray(cs)&&cs[0]&&cs[0].commit) reportDate=cs[0].commit.committer.date; }
       }catch(e){}
     }
-    const rawUrl=pick.download_url || ('https://raw.githubusercontent.com/'+GH_DATA.owner+'/'+GH_DATA.repo+'/'+GH_DATA.branch+'/'+GH_DATA.dir+'/'+encodeURIComponent(pick.name));
-    const draw=await fetch(rawUrl);
+    const rawOf=f=>f.download_url || ('https://raw.githubusercontent.com/'+GH_DATA.owner+'/'+GH_DATA.repo+'/'+GH_DATA.branch+'/'+GH_DATA.dir+'/'+encodeURIComponent(f.name));
+    const draw=await fetch(rawOf(pick));
     if(!draw.ok) return false;
     const text=await draw.text();
-    showData(text, pick.name, Date.now(), {github:true, reportDate:reportDate});
+    // 「上月定案檔」：日期早於當月第一次例會的最新一份。只有當月已開跑（pick 日期 ≥ 當月第一個週三）才需要。
+    // 例：當月最新是 8/7 → 8 月第一個週三是 8/5 → 抓日期 < 8/5 的最新檔（＝ 8/3）當 7 月凍結定案。
+    // files 已由新到舊排序，往下第一個「日期 < 當月第一次例會」的就是上月定案。8 月新檔日期都 ≥ 8/5，永遠不會被選到 → 7 月定案自動凍結。
+    let settled=null;
+    const pickDate=parseDateFromName(pick.name);
+    if(pickDate){
+      const fm=firstMeetingOfMonth(pickDate);
+      if(fm && pickDate.getTime()>=fm.getTime()){
+        for(const f of files){
+          const d=parseDateFromName(f.name);
+          if(d && d.getTime()<fm.getTime()){
+            try{ const sr=await fetch(rawOf(f)); if(sr.ok) settled={text:await sr.text(), fileName:f.name}; }catch(e){}
+            break;
+          }
+        }
+      }
+    }
+    showData(text, pick.name, Date.now(), {github:true, reportDate:reportDate, settled:settled});
     return true;
   }
 
