@@ -550,7 +550,8 @@
     // rows
     const q=clean($('#search').value);
     const list=MEMBERS.slice().filter(m=>!q||m.name.indexOf(q)>=0).sort(cmp);
-    const weeks=Math.max(1, parseInt($('#weeks').value,10)||1);
+    // 剩餘 0 場時傳 0，detailPanel 會略過「距月底約每週」提示（沒有場次可攤）
+    const weeks=(VIEW_MODE!=='final' && AUTO_REMAIN>0) ? Math.max(1, parseInt($('#weeks').value,10)||1) : 0;
     tbody.innerHTML='';
     if(!list.length){ tbody.innerHTML='<tr><td colspan="9" class="empty">查無符合的夥伴</td></tr>'; syncHead(); return; }
     for(const m of list){
@@ -631,7 +632,7 @@
           const toTxt=c.money? fmtMoneyWan(t.target) : (t.target+c.unit);
           const gain=t.score-sc;
           let pace='';
-          if(!c.money){ const p=Math.ceil(need/weeksLeft); pace=' <span class="pace">（距月底約每週 '+p+c.unit+'）</span>'; }
+          if(!c.money && weeksLeft>0){ const p=Math.ceil(need/weeksLeft); pace=' <span class="pace">（距月底約每週 '+p+c.unit+'）</span>'; }
           html+='<div class="step"><span class="plus">+'+gain+'分</span>'+
                 '<span class="need">再補 <b>'+needTxt+'</b> 到 '+toTxt+pace+'</span></div>';
         }
@@ -779,8 +780,12 @@
   function syncWeeksLeft(){
     const box=$('#weeksLeftBox'), wl=$('#weeks'); if(!box||!wl) return;
     if(VIEW_MODE==='final'){ box.classList.add('hidden'); return; }
+    // 當月最後一個週三之後上傳 → 剩餘 0 場，沒有可追分的場次，整格收起來。
+    // 2026-08-29 修：舊版只在 AUTO_REMAIN>0 時才寫入，剩 0 時會留著 HTML 的預設值 3，
+    // 畫面顯示「月底前剩 3 週」讓人以為八月還沒結束（分數不受影響，只有節奏提示會錯）。
+    if(!(AUTO_REMAIN>0)){ wl.value=''; box.classList.add('hidden'); return; }
     box.classList.remove('hidden');
-    if(AUTO_REMAIN>0) wl.value=AUTO_REMAIN;
+    wl.value=AUTO_REMAIN;
   }
   // 兩顆按鈕的選取狀態與文字（文字帶出各自對應的日期，避免使用者要自己推算）
   function updateViewModeUI(){
@@ -795,14 +800,20 @@
     const finalRef = SETTLED_REF || CUR_REF;
     const finalBase = (SETTLED_BASE!=null) ? SETTLED_BASE : CUR_BASE;
     if(CUR_REF && !isNaN(CUR_REF.getTime())){
-      bc.textContent='追分中 · '+(CUR_REF.getMonth()+1)+'月底';
+      // 當月最後一個週三已開完（剩餘 0 場）→ 這個月的數字不會再變，改標「已定案」。
+      // 下個月第一次上傳後，這份就會變成「已結算」那顆按鈕的來源。（2026-08-29 加）
+      bc.textContent = (CUR_REMAIN>0)
+        ? ('追分中 · '+(CUR_REF.getMonth()+1)+'月底')
+        : ((CUR_REF.getMonth()+1)+'月 已定案');
     }
     if(finalRef && !isNaN(finalRef.getTime())){
       const lm=lastMeetingOnOrBefore(finalRef);
       bf.textContent='已結算 · 至 '+(lm?((lm.getMonth()+1)+'/'+lm.getDate()):'上次例會');
     }
     const cw=(CUR_BASE!=null)?(CUR_BASE+CUR_REMAIN):null, fw=finalBase;
-    bc.title='追分中：分母算到本月底（'+(cw||'—')+' 週＝已累計 '+(CUR_BASE||'—')+' ＋ 月底前 '+CUR_REMAIN+' 次例會），看的是「要達標還差多少」';
+    bc.title = (CUR_REMAIN>0)
+      ? '追分中：分母算到本月底（'+(cw||'—')+' 週＝已累計 '+(CUR_BASE||'—')+' ＋ 月底前 '+CUR_REMAIN+' 次例會），看的是「要達標還差多少」'
+      : '已定案：本月最後一次例會已開完（'+(cw||'—')+' 週＝已累計 '+(CUR_BASE||'—')+' ＋ 月底前 0 次例會），數字不會再變動，這就是本月最終成績';
     bf.title='已結算：分母只算已開過的例會（'+(fw||'—')+' 週）'+(SETTLED_MEMBERS?'，讀上月定案檔、凍結不再變動':'')+'，看的是「上個月的最終成績」';
   }
   function setViewMode(mode){
