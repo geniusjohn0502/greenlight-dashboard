@@ -396,6 +396,17 @@
   };
   const SKIP_NAMES = new Set(['總數','小計','合計','來賓','BNI','總計','Total']);
 
+  // 已離會夥伴：BNI Connect 的 PALMS 匯出檔通常會多留他們一到兩週（仍標 P、
+  // 還帶著一對一與引薦數），這裡一律不計入——出勤、名單、計分全部排除。
+  // ⚠️ 新增名字前先確認 base（全分會最高出席場次）不會因此下降：若離會者剛好
+  //    是出席場次最高的人，拿掉他會讓分母變小、所有人的每週平均被高估。
+  const DEPARTED_MEMBERS = new Set([
+    '董子涵',           // 離會
+    '林佳潔',           // 2026/6 離會
+    '鄭翔元',           // 2026/8 離會
+    '王翎', '蔡秉夆',   // 2026/9 離會
+  ]);
+
   function toNum(v){ if(v==null) return 0; const n=parseFloat(String(v).replace(/[, ]/g,'')); return isNaN(n)?0:n; }
   function clean(s){ return (s==null?'':String(s)).replace(/　/g,' ').trim(); }
 
@@ -474,6 +485,7 @@
       if(!given && SKIP_NAMES.has(surname)) continue;
       // require at least a present value that looks like a member figure and a given name
       if(!given) continue;
+      if(DEPARTED_MEMBERS.has(surname+given)) continue;   // 已離會，PALMS 尚未移除
       const m={
         name: surname+given,
         surname, given,
